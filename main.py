@@ -1,6 +1,6 @@
-import pygame
+import math
 
-first = True
+import pygame
 
 
 class Face:
@@ -47,8 +47,6 @@ class Cuboid:
             Face((x2, y1, z1), (x2, y1, z2), (x2, y2, z2), (x2, y2, z1)),
         ]
 
-        print(self.faces)
-
 
 class Camera:
     position: pygame.Vector3
@@ -56,42 +54,43 @@ class Camera:
     screen: pygame.Surface
     res: tuple[float, float]
 
+    rotation: pygame.Vector2
+
     def __init__(self, starting_posion: pygame.Vector3, screen_distance: float, res: tuple[float, float],
                  screen: pygame.Surface) -> None:
         self.position = starting_posion
         self.screen_distance = screen_distance
         self.res = res
         self.screen = screen
+        self.rotation = pygame.Vector2(0, 0)
+
+    def rotate_point(self, point: pygame.Vector3) -> tuple[float, float, float]:
+        x, y, z = point
+        cam_dist: float = math.sqrt((self.position.x - x)**2 + (self.position.z - z)**2)
+        rot_x = cam_dist * math.cos(x) * self.rotation.x
+        rot_z = cam_dist * math.sin(z) * self.rotation.x
+        return rot_x, y, rot_z
 
     def render_cuboid(self, object_: Cuboid) -> None:
         for face in object_.faces:
             self.render_face(face)
 
     def render_face(self, face: Face):
-        for i in range(len(face.vertices)):
-            self.render_line(face.vertices[i - 1], face.vertices[i], face.color)
-            if first:
-                print(face.vertices[i - 1], face.vertices[i])
+        points: list[tuple[float, float]] = [self.get_point(i) for i in face.vertices]
 
-    def render_line(self, point1: pygame.Vector3, point2: pygame.Vector3, color):
-        x1, y1, z1 = point1
-        x2, y2, z2 = point2
+        pygame.draw.polygon(self.screen, "darkgreen", points, width=0)
 
-        x1_dist = x1 - self.position.x
-        x2_dist = x2 - self.position.x
-        y1_dist = y1 - self.position.y
-        y2_dist = y2 - self.position.y
-        z1_dist = z1 - self.position.z
-        z2_dist = z2 - self.position.z
+    def get_point(self, point: pygame.Vector3) -> tuple[float, float]:
+        x, y, z = self.rotate_point(point)
 
-        y1_pos = self.res[1] / 2 - (y1_dist * self.screen_distance) / x1_dist
-        z1_pos = self.res[0] / 2 - (z1_dist * self.screen_distance) / x1_dist
+        x_dist = x - self.position.x
+        y_dist = y - self.position.y
+        z_dist = z - self.position.z
 
-        y2_pos = self.res[1] / 2 - (y2_dist * self.screen_distance) / x2_dist
-        z2_pos = self.res[0] / 2 - (z2_dist * self.screen_distance) / x2_dist
+        y_pos = self.res[1] / 2 - (y_dist * self.screen_distance) / x_dist
+        z_pos = self.res[0] / 2 - (z_dist * self.screen_distance) / x_dist
 
-        if x1_dist >= 0 and x2_dist >= 0:
-            pygame.draw.line(self.screen, color, (z1_pos, y1_pos), (z2_pos, y2_pos))
+        return z_pos, y_pos
 
     def try_move(self, keys, dt):
         if keys[pygame.K_w]:
@@ -103,10 +102,13 @@ class Camera:
         if keys[pygame.K_d]:
             self.position.z -= 10 * dt
 
+        if keys[pygame.K_LEFT]:
+            self.rotation.x += 10 * dt
+        if keys[pygame.K_RIGHT]:
+            self.rotation.x -= 10 * dt
+
 
 def main() -> None:
-    global first
-
     pygame.init()
     screen = pygame.display.set_mode((1280, 720))
     clock = pygame.time.Clock()
@@ -131,8 +133,6 @@ def main() -> None:
 
         camera.render_cuboid(cube)
         camera.render_cuboid(cube2)
-
-        first = False
 
         pygame.display.flip()
         dt = clock.tick(60) / 1000
