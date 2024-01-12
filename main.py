@@ -99,8 +99,8 @@ class Camera:
         y_dist = y - self.position.y
         z_dist = z - self.position.z
 
-        y_pos = self.res[1] / 2 - (y_dist * self.screen_distance) / (x_dist + small_number)
-        z_pos = self.res[0] / 2 - (z_dist * self.screen_distance) / (x_dist + small_number)
+        y_pos = self.res[0] / 2 - (y_dist * self.screen_distance) / (x_dist + small_number)
+        z_pos = self.res[1] / 2 - (z_dist * self.screen_distance) / (x_dist + small_number)
 
         return y_pos, z_pos
 
@@ -114,9 +114,11 @@ class Camera:
             self.position.x -= 10 * dt * math.sin(rotation)
             self.position.y -= 10 * dt * math.cos(rotation)
         if keys[pygame.K_a]:
-            self.position.y += 10 * dt
+            self.position.x += 10 * dt * math.cos(rotation)
+            self.position.y -= 10 * dt * math.sin(rotation)
         if keys[pygame.K_d]:
-            self.position.y -= 10 * dt
+            self.position.x -= 10 * dt * math.cos(rotation)
+            self.position.y += 10 * dt * math.sin(rotation)
 
         if keys[pygame.K_LEFT]:
             self.rotation.x -= 50 * dt
