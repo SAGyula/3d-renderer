@@ -16,12 +16,6 @@ class Face:
         for coords in vertices:
             self.vertices.append(pygame.Vector3(coords[0], coords[1], coords[2]))
 
-    def __str__(self) -> str:
-        return str(self.vertices)
-
-    def __repr__(self) -> str:
-        return str(self.vertices)
-
 
 class Cuboid:
     cor1: pygame.Vector3
