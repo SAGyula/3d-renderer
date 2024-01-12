@@ -4,10 +4,6 @@ import pygame
 small_number: float = 0.001
 
 
-def degrees_to_radians(degs: float) -> float:
-    return degs * (math.pi / 180)
-
-
 class Face:
     vertices: list[pygame.Vector3]
     color: str
@@ -47,12 +43,12 @@ class Cuboid:
         x1, y1, z1 = self.cor1
         x2, y2, z2 = self.cor2
         self.faces = [
-            Face((x1, y1, z1), (x1, y2, z1), (x2, y2, z1), (x2, y1, z1)),
-            Face((x1, y1, z2), (x1, y2, z2), (x2, y2, z2), (x2, y1, z2)),
-            Face((x1, y2, z1), (x1, y2, z2), (x2, y2, z2), (x2, y2, z1)),
-            Face((x1, y1, z1), (x1, y1, z2), (x2, y1, z2), (x2, y1, z1)),
-            Face((x1, y1, z1), (x1, y1, z2), (x1, y2, z2), (x1, y2, z1)),
-            Face((x2, y1, z1), (x2, y1, z2), (x2, y2, z2), (x2, y2, z1)),
+            Face((x1, y1, z1), (x1, y2, z1), (x2, y2, z1), (x2, y1, z1), color="green"),
+            Face((x1, y1, z2), (x1, y2, z2), (x2, y2, z2), (x2, y1, z2), color="blue"),
+            Face((x1, y2, z1), (x1, y2, z2), (x2, y2, z2), (x2, y2, z1), color="yellow"),
+            Face((x1, y1, z1), (x1, y1, z2), (x2, y1, z2), (x2, y1, z1), color="pink"),
+            Face((x1, y1, z1), (x1, y1, z2), (x1, y2, z2), (x1, y2, z1), color="gray"),
+            Face((x2, y1, z1), (x2, y1, z2), (x2, y2, z2), (x2, y2, z1), color="purple"),
         ]
 
 
@@ -61,6 +57,8 @@ class Camera:
     screen_distance: float
     screen: pygame.Surface
     res: tuple[float, float]
+
+    render_queue: list[Face]
 
     rotation: pygame.Vector2
 
@@ -71,6 +69,8 @@ class Camera:
         self.res = res
         self.screen = screen
         self.rotation = pygame.Vector2(0, 0)
+
+        self.render_queue = []
 
     def rotate_point(self, point: pygame.Vector3) -> tuple[float, float, float]:
         x, y, z = point
@@ -83,14 +83,27 @@ class Camera:
 
         return rot_x, rot_y, z
 
-    def render_cuboid(self, object_: Cuboid) -> None:
+    def init_cuboid(self, object_: Cuboid) -> None:
         for face in object_.faces:
-            self.render_face(face, object_.color)
+            self.render_queue.append(face)
 
-    def render_face(self, face: Face, color: str):
+    def render(self) -> None:
+        self.render_queue.sort(key=self.face_sort, reverse=True)
+
+        for face in self.render_queue:
+            self.render_face(face)
+
+    def face_sort(self, a: Face) -> float:
+        avg_x = sum([i.x for i in a.vertices]) / len(a.vertices)
+        avg_y = sum([i.y for i in a.vertices]) / len(a.vertices)
+        avg_z = sum([i.z for i in a.vertices]) / len(a.vertices)
+
+        return math.sqrt((avg_x - self.position.x) ** 2 + (avg_y - self.position.y) ** 2 + (avg_z - self.position.z) ** 2)
+
+    def render_face(self, face: Face):
         points: list[tuple[float, float]] = [self.get_point(i) for i in face.vertices]
 
-        pygame.draw.polygon(self.screen, color, points, width=0)
+        pygame.draw.polygon(self.screen, face.color, points, width=0)
 
     def get_point(self, point: pygame.Vector3) -> tuple[float, float]:
         x, y, z = self.rotate_point(point)
@@ -126,6 +139,10 @@ class Camera:
             self.rotation.x += 50 * dt
 
 
+def degrees_to_radians(degs: float) -> float:
+    return degs * (math.pi / 180)
+
+
 def main() -> None:
     pygame.init()
     screen = pygame.display.set_mode((1280, 720))
@@ -140,6 +157,10 @@ def main() -> None:
 
     running = True
 
+    camera.init_cuboid(cube)
+    camera.init_cuboid(cube3)
+    camera.init_cuboid(cube2)
+
     while running:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -150,9 +171,7 @@ def main() -> None:
         keys = pygame.key.get_pressed()
         camera.try_move(keys, dt)
 
-        camera.render_cuboid(cube)
-        camera.render_cuboid(cube3)
-        camera.render_cuboid(cube2)
+        camera.render()
 
         pygame.display.flip()
         dt = clock.tick(60) / 1000
