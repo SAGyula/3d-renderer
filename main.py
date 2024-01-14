@@ -3,6 +3,10 @@ import pygame
 
 small_number: float = 0.001
 
+side_lines: list[tuple[int, int, int, int]] = [
+    (-1, -1, -1, 1), (1, -1, 1, 1), (-1, 1, 1, 1), (-1, -1, 1, -1)
+]
+
 
 class Face:
     vertices: list[pygame.Vector3]
@@ -37,16 +41,17 @@ class Cuboid:
         x1, y1, z1 = self.cor1
         x2, y2, z2 = self.cor2
         self.faces = [
-            Face((x1, y1, z1), (x1, y2, z1), (x2, y2, z1), (x2, y1, z1), color="green"),
-            Face((x1, y1, z2), (x1, y2, z2), (x2, y2, z2), (x2, y1, z2), color="blue"),
-            Face((x1, y2, z1), (x1, y2, z2), (x2, y2, z2), (x2, y2, z1), color="yellow"),
-            Face((x1, y1, z1), (x1, y1, z2), (x2, y1, z2), (x2, y1, z1), color="pink"),
-            Face((x1, y1, z1), (x1, y1, z2), (x1, y2, z2), (x1, y2, z1), color="gray"),
-            Face((x2, y1, z1), (x2, y1, z2), (x2, y2, z2), (x2, y2, z1), color="purple"),
+            Face((x1, y1, z1), (x1, y2, z1), (x2, y2, z1), (x2, y1, z1), color=self.color),
+            Face((x1, y1, z2), (x1, y2, z2), (x2, y2, z2), (x2, y1, z2), color=self.color),
+            Face((x1, y2, z1), (x1, y2, z2), (x2, y2, z2), (x2, y2, z1), color=self.color),
+            Face((x1, y1, z1), (x1, y1, z2), (x2, y1, z2), (x2, y1, z1), color=self.color),
+            Face((x1, y1, z1), (x1, y1, z2), (x1, y2, z2), (x1, y2, z1), color=self.color),
+            Face((x2, y1, z1), (x2, y1, z2), (x2, y2, z2), (x2, y2, z1), color=self.color),
         ]
 
 
 class Camera:
+    origin: pygame.Vector3
     position: pygame.Vector3
     screen_distance: float
     screen: pygame.Surface
@@ -55,27 +60,54 @@ class Camera:
     render_queue: list[Face]
 
     rotation: pygame.Vector2
+    mouse_sensitivity: float
 
-    def __init__(self, starting_posion: pygame.Vector3, screen_distance: float, res: tuple[float, float],
-                 screen: pygame.Surface) -> None:
-        self.position = starting_posion
-        self.screen_distance = screen_distance
+    original_height: float
+    height: float
+    jump_height: float
+    crouch_multiplier: float
+
+    def __init__(self, starting_posion: pygame.Vector3, fov: float, res: tuple[float, float],
+                 screen: pygame.Surface, mouse_sensitivity: float = 10) -> None:
+        self.origin = starting_posion
+
         self.res = res
+        self.screen_distance = self.calc_fov(fov)
         self.screen = screen
-        self.rotation = pygame.Vector2(0, 0)
+        self.rotation = pygame.Vector2(-90, 0)
+        self.mouse_sensitivity = mouse_sensitivity
+
+        self.original_height = 1
+        self.height = self.original_height
+        self.jump_height = 1
+        self.crouch_multiplier = 0.5
 
         self.render_queue = []
+
+        self.position = pygame.Vector3(self.origin.x, self.origin.y, self.height)
+
+    def calc_fov(self, deg: float) -> float:
+        return (self.res[0] / 2) / (math.tan(degrees_to_radians(deg) / 2))
 
     def rotate_point(self, point: pygame.Vector3) -> tuple[float, float, float]:
         x, y, z = point
         x -= self.position.x
         y -= self.position.y
-        rotation = degrees_to_radians(self.rotation.x)
+        z -= self.position.z
+        rotation_x = degrees_to_radians(self.rotation.x)
+        rotation_y = degrees_to_radians(self.rotation.y)
 
-        rot_x = (y * math.cos(rotation) - x * math.sin(rotation)) + self.position.x
-        rot_y = (x * math.cos(rotation) + y * math.sin(rotation)) + self.position.y
+        mid_rot_x = y * math.cos(rotation_x) - x * math.sin(rotation_x)
+        rot_y = x * math.cos(rotation_x) + y * math.sin(rotation_x)
 
-        return rot_x, rot_y, z
+        rot_x = mid_rot_x * math.cos(rotation_y) - z * math.sin(rotation_y)
+        rot_z = mid_rot_x * math.sin(rotation_y) + z * math.cos(rotation_y)
+
+        rot_x += self.position.x
+        rot_y += self.position.y
+        rot_z += self.position.z
+
+        return rot_x, rot_y, rot_z
 
     def init_cuboid(self, object_: Cuboid) -> None:
         for face in object_.faces:
@@ -92,26 +124,85 @@ class Camera:
         avg_y = sum([i.y for i in a.vertices]) / len(a.vertices)
         avg_z = sum([i.z for i in a.vertices]) / len(a.vertices)
 
-        return math.sqrt((avg_x - self.position.x) ** 2 + (avg_y - self.position.y) ** 2 + (avg_z - self.position.z) ** 2)
+        return math.sqrt(
+            (avg_x - self.position.x) ** 2 + (avg_y - self.position.y) ** 2 + (avg_z - self.position.z) ** 2)
 
     def render_face(self, face: Face):
-        points: list[tuple[float, float]] = [self.get_point(i) for i in face.vertices]
+        pre_points: list[tuple[float, float, bool]] = [self.get_point(point) for point in face.vertices]
+
+        if not any([point[2] for point in pre_points]):
+            return
+
+        points: list[tuple[float, float]] = []
+        for index, point in enumerate(pre_points):
+            if point[2]:
+                points.append((point[0], point[1]))
+                continue
+
+            reference: tuple[float, float, bool]
+            for i in [-1, 1]:
+                if len(pre_points) > index + 1 and pre_points[index + i][2]:
+                    reference = pre_points[index + i]
+                else:
+                    continue
+
+                for side in range(4):
+                    current_side: tuple[int, int, int, int] = side_lines[side]
+
+                    c: pygame.Vector2 = pygame.Vector2(self.res[0] * current_side[0], self.res[1] * current_side[1])
+                    d: pygame.Vector2 = pygame.Vector2(self.res[0] * current_side[2], self.res[1] * current_side[3])
+
+                    re: pygame.Vector2 = pygame.Vector2(reference[0], reference[1])
+                    p: pygame.Vector2 = pygame.Vector2(point[0], point[1])
+
+                    a = (d.x - c.x) * (c.y - p.y) - (d.y - c.y) * (c.x - p.x)
+                    b = (d.x - c.x) * (re.y - p.y) - (d.y - c.y) * (re.x - p.x)
+                    c = (re.x - p.x) * (c.y - p.y) - (re.y - p.y) * (c.x - p.x)
+
+                    if b == 0:
+                        continue
+
+                    alpha: float = a / b
+                    beta: float = a / c
+
+                    if (alpha > 1 or alpha < 0) and (beta > 0 or beta < 0):
+                        continue
+
+                    print("point added")
+
+                    x = p.x + alpha * (re.x - p.x)
+                    y = p.y + alpha * (re.y - p.y)
+
+                    points.append((x, y))
+
+        while len(points) <= 2:
+            points.append(points[0])
 
         pygame.draw.polygon(self.screen, face.color, points, width=0)
 
-    def get_point(self, point: pygame.Vector3) -> tuple[float, float]:
+    def get_point(self, point: pygame.Vector3) -> tuple[float, float, bool]:
+        on_screen: bool = True
         x, y, z = self.rotate_point(point)
 
         x_dist = x - self.position.x
         y_dist = y - self.position.y
         z_dist = z - self.position.z
 
-        y_pos = self.res[0] / 2 - (y_dist * self.screen_distance) / (x_dist + small_number)
-        z_pos = self.res[1] / 2 - (z_dist * self.screen_distance) / (x_dist + small_number)
+        y_mid = (y_dist * self.screen_distance) / (x_dist + small_number)
+        z_mid = (z_dist * self.screen_distance) / (x_dist + small_number)
 
-        return y_pos, z_pos
+        x_pos = (self.res[0] / 2) - y_mid
+        y_pos = (self.res[1] / 2) - z_mid
 
-    def try_move(self, keys, dt):
+        half_widht = self.res[0] / 2
+        half_height = self.res[1] / 2
+
+        if x_pos < -half_widht or x_pos > half_widht * 2 or y_pos < -half_height or y_pos > half_height * 2:
+            on_screen = False
+
+        return x_pos, y_pos, on_screen
+
+    def move(self, keys, dt):
         rotation = degrees_to_radians(360 - self.rotation.x)
 
         if keys[pygame.K_w]:
@@ -127,10 +218,18 @@ class Camera:
             self.position.x -= 10 * dt * math.cos(rotation)
             self.position.y += 10 * dt * math.sin(rotation)
 
-        if keys[pygame.K_LEFT]:
-            self.rotation.x -= 50 * dt
-        if keys[pygame.K_RIGHT]:
-            self.rotation.x += 50 * dt
+        if keys[pygame.K_LCTRL]:
+            self.height = self.original_height * self.crouch_multiplier
+        else:
+            self.height = self.original_height
+        self.position.z = self.height + self.origin.z
+
+        mouse_x, mouse_y = pygame.mouse.get_rel()
+
+        self.rotation.x += mouse_x * (self.mouse_sensitivity / 100)
+        self.rotation.y += mouse_y * (self.mouse_sensitivity / 100)
+
+        self.rotation.x %= 360
 
 
 def degrees_to_radians(degs: float) -> float:
@@ -142,28 +241,46 @@ def main() -> None:
     screen = pygame.display.set_mode((1280, 720))
     clock = pygame.time.Clock()
 
+    pygame.mouse.set_visible(False)
+
     dt = 0
 
-    cube = Cuboid((1, 1, 1), (3, 2, 2), "blue")
-    cube2 = Cuboid((1, 1, 1), (2, 3, 2), "green")
-    cube3 = Cuboid((1, 1, 1), (2, 2, 3), "yellow")
-    camera = Camera(pygame.Vector3(-2, 0, 1), 800, (1280, 720), screen)
+    cube = Cuboid((1, 3, 0), (2, 4, 1), "red")
+    cube2 = Cuboid((3, 1, 0), (4, 2, 1), "blue")
+    cube3 = Cuboid((-1, -3, 0), (0, -2, 1), "green")
+    cube4 = Cuboid((-3, -1, 0), (-2, 0, 1), "yellow")
+    camera = Camera(pygame.Vector3(0, 0, 0), 120, (1280, 720), screen, 5)
 
     running = True
+    paused = False
 
     camera.init_cuboid(cube)
     camera.init_cuboid(cube3)
     camera.init_cuboid(cube2)
+    camera.init_cuboid(cube4)
 
     while running:
+        pygame.event.set_grab(True)
+
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    paused = not paused
+                    pygame.event.set_grab(paused)
+                    pygame.mouse.set_visible(paused)
+
+                    screen.fill("lightgray")
+                    pygame.display.flip()
+
+        if paused:
+            continue
 
         screen.fill("white")
 
         keys = pygame.key.get_pressed()
-        camera.try_move(keys, dt)
+        camera.move(keys, dt)
 
         camera.render()
 
