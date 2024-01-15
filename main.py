@@ -4,7 +4,7 @@ import pygame
 small_number: float = 0.001
 
 side_lines: list[tuple[int, int, int, int]] = [
-    (-1, -1, -1, 1), (1, -1, 1, 1), (-1, 1, 1, 1), (-1, -1, 1, -1)
+    (1, 0, 0, 0), (1, 1, 1, 0), (1, 1, 0, 1), (0, 1, 0, 0)
 ]
 
 
@@ -141,37 +141,38 @@ class Camera:
 
             reference: tuple[float, float, bool]
             for i in [-1, 1]:
-                if len(pre_points) > index + 1 and pre_points[index + i][2]:
-                    reference = pre_points[index + i]
+                if len(pre_points) == index + i:
+                    ref_point = 0
+                else:
+                    ref_point = index + i
+
+                if pre_points[ref_point][2]:
+                    reference = pre_points[ref_point]
                 else:
                     continue
 
                 for side in range(4):
                     current_side: tuple[int, int, int, int] = side_lines[side]
 
-                    c: pygame.Vector2 = pygame.Vector2(self.res[0] * current_side[0], self.res[1] * current_side[1])
-                    d: pygame.Vector2 = pygame.Vector2(self.res[0] * current_side[2], self.res[1] * current_side[3])
+                    C: pygame.Vector2 = pygame.Vector2(self.res[0] * current_side[0], self.res[1] * current_side[1])
+                    D: pygame.Vector2 = pygame.Vector2(self.res[0] * current_side[2], self.res[1] * current_side[3])
 
                     re: pygame.Vector2 = pygame.Vector2(reference[0], reference[1])
                     p: pygame.Vector2 = pygame.Vector2(point[0], point[1])
 
-                    a = (d.x - c.x) * (c.y - p.y) - (d.y - c.y) * (c.x - p.x)
-                    b = (d.x - c.x) * (re.y - p.y) - (d.y - c.y) * (re.x - p.x)
-                    c = (re.x - p.x) * (c.y - p.y) - (re.y - p.y) * (c.x - p.x)
+                    a, b, c = crossing_of_lines(D, C, p, re)
 
                     if b == 0:
                         continue
 
                     alpha: float = a / b
-                    beta: float = a / c
+                    beta: float = c / b
 
-                    if (alpha > 1 or alpha < 0) and (beta > 0 or beta < 0):
+                    if alpha >= 1 or alpha <= 0 or beta >= 1 or beta <= 0:
                         continue
 
-                    print("point added")
-
-                    x = p.x + alpha * (re.x - p.x)
-                    y = p.y + alpha * (re.y - p.y)
+                    x = p.x + alpha * (p.x - re.x)
+                    y = p.y + alpha * (p.y - re.y)
 
                     points.append((x, y))
 
@@ -194,10 +195,7 @@ class Camera:
         x_pos = (self.res[0] / 2) - y_mid
         y_pos = (self.res[1] / 2) - z_mid
 
-        half_widht = self.res[0] / 2
-        half_height = self.res[1] / 2
-
-        if x_pos < -half_widht or x_pos > half_widht * 2 or y_pos < -half_height or y_pos > half_height * 2:
+        if x_pos < 0 or x_pos > self.res[0] or y_pos < 0 or y_pos > self.res[1] or x_dist < 0:
             on_screen = False
 
         return x_pos, y_pos, on_screen
@@ -234,6 +232,14 @@ class Camera:
 
 def degrees_to_radians(degs: float) -> float:
     return degs * (math.pi / 180)
+
+
+def crossing_of_lines(d: pygame.Vector2, c: pygame.Vector2, p: pygame.Vector2, re: pygame.Vector2) -> tuple[float, float, float]:
+    a = (d.x - c.x) * (c.y - p.y) - (d.y - c.y) * (c.x - p.x)
+    b = (d.x - c.x) * (re.y - p.y) - (d.y - c.y) * (re.x - p.x)
+    c = (re.x - p.x) * (c.y - p.y) - (re.y - p.y) * (c.x - p.x)
+
+    return a, b, c
 
 
 def main() -> None:
