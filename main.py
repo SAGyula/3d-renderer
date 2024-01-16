@@ -154,32 +154,42 @@ class Camera:
                 for side in range(4):
                     current_side: tuple[int, int, int, int] = side_lines[side]
 
-                    C: pygame.Vector2 = pygame.Vector2(self.res[0] * current_side[0], self.res[1] * current_side[1])
-                    D: pygame.Vector2 = pygame.Vector2(self.res[0] * current_side[2], self.res[1] * current_side[3])
+                    projection = self.project_point_to_screen(current_side, reference, point)
 
-                    re: pygame.Vector2 = pygame.Vector2(reference[0], reference[1])
-                    p: pygame.Vector2 = pygame.Vector2(point[0], point[1])
-
-                    a, b, c = crossing_of_lines(D, C, p, re)
-
-                    if b == 0:
+                    if projection is None:
                         continue
 
-                    alpha: float = a / b
-                    beta: float = c / b
-
-                    if alpha >= 1 or alpha <= 0 or beta >= 1 or beta <= 0:
-                        continue
-
-                    x = p.x + alpha * (p.x - re.x)
-                    y = p.y + alpha * (p.y - re.y)
-
-                    points.append((x, y))
+                    points.append((projection.x, projection.y))
 
         while len(points) <= 2:
             points.append(points[0])
 
         pygame.draw.polygon(self.screen, face.color, points, width=0)
+
+    def project_point_from_outside(self, current_side: tuple[int, int, int, int],
+                                reference: tuple[float, float, bool], point: tuple[float, float, bool])\
+            -> pygame.Vector2 | None:
+        C: pygame.Vector2 = pygame.Vector2(self.res[0] * current_side[0], self.res[1] * current_side[1])
+        D: pygame.Vector2 = pygame.Vector2(self.res[0] * current_side[2], self.res[1] * current_side[3])
+
+        re: pygame.Vector2 = pygame.Vector2(reference[0], reference[1])
+        p: pygame.Vector2 = pygame.Vector2(point[0], point[1])
+
+        a, b, c = crossing_of_lines(D, C, p, re)
+
+        if b == 0:
+            return None
+
+        alpha: float = a / b
+        beta: float = c / b
+
+        if alpha >= 1 or alpha <= 0 or beta >= 1 or beta <= 0:
+            return None
+
+        x = p.x + alpha * (p.x - re.x)
+        y = p.y + alpha * (p.y - re.y)
+
+        return pygame.Vector2(x, y)
 
     def get_point(self, point: pygame.Vector3) -> tuple[float, float, bool]:
         on_screen: bool = True
