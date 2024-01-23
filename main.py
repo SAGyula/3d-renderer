@@ -51,7 +51,6 @@ class Cuboid:
 
 
 class Camera:
-    origin: pygame.Vector3
     position: pygame.Vector3
     screen_distance: float
     screen: pygame.Surface
@@ -62,29 +61,17 @@ class Camera:
     rotation: pygame.Vector2
     mouse_sensitivity: float
 
-    original_height: float
-    height: float
-    jump_height: float
-    crouch_multiplier: float
-
-    def __init__(self, starting_posion: pygame.Vector3, fov: float, res: tuple[float, float],
+    def __init__(self, fov: float, res: tuple[float, float],
                  screen: pygame.Surface, mouse_sensitivity: float = 10) -> None:
-        self.origin = starting_posion
-
         self.res = res
         self.screen_distance = self.calc_fov(fov)
         self.screen = screen
         self.rotation = pygame.Vector2(-90, 0)
         self.mouse_sensitivity = mouse_sensitivity
 
-        self.original_height = 1
-        self.height = self.original_height
-        self.jump_height = 1
-        self.crouch_multiplier = 0.5
-
         self.render_queue = []
 
-        self.position = pygame.Vector3(self.origin.x, self.origin.y, self.height)
+        self.position = pygame.Vector3(0, 0, 0)
 
     def calc_fov(self, deg: float) -> float:
         return (self.res[0] / 2) / (math.tan(degrees_to_radians(deg) / 2))
@@ -128,33 +115,44 @@ class Camera:
             (avg_x - self.position.x) ** 2 + (avg_y - self.position.y) ** 2 + (avg_z - self.position.z) ** 2)
 
     def render_face(self, face: Face):
-        pre_points: list[tuple[float, float, bool]] = [self.get_point(point) for point in face.vertices]
+        pre_points: list[tuple[float, float, int]] = [self.get_point(point_) for point_ in face.vertices]
 
-        if not any([point[2] for point in pre_points]):
+        if not any([point[2] == 0 for point in pre_points]):
             return
 
         points: list[tuple[float, float]] = []
         for index, point in enumerate(pre_points):
-            if point[2]:
+            if point[2] == 0:
                 points.append((point[0], point[1]))
                 continue
 
-            reference: tuple[float, float, bool]
             for i in [-1, 1]:
                 if len(pre_points) == index + i:
                     ref_point = 0
                 else:
                     ref_point = index + i
 
-                if pre_points[ref_point][2]:
-                    reference = pre_points[ref_point]
+                if pre_points[ref_point][2] == 0:
+                    reference: tuple[float, float, int] = pre_points[ref_point]
                 else:
                     continue
+
+                x: float = point[0]
+                if point[2] & 0b001 > 0:
+                    if point[2] & 0b100 == 0:
+                        if x < self.res[0] / 2:
+                            x *= -1
+                        else:
+                            x = self.res[0] + (self.res[0] - x)
+
+                y: float = point[1]
+
+                point: tuple[float, float, int] = (x, y, point[2])
 
                 for side in range(4):
                     current_side: tuple[int, int, int, int] = side_lines[side]
 
-                    projection = self.project_point_to_screen(current_side, reference, point)
+                    projection = self.project_point_from_outside(current_side, reference, point)
 
                     if projection is None:
                         continue
@@ -167,7 +165,7 @@ class Camera:
         pygame.draw.polygon(self.screen, face.color, points, width=0)
 
     def project_point_from_outside(self, current_side: tuple[int, int, int, int],
-                                reference: tuple[float, float, bool], point: tuple[float, float, bool])\
+                                   reference: tuple[float, float, int], point: tuple[float, float, int]) \
             -> pygame.Vector2 | None:
         C: pygame.Vector2 = pygame.Vector2(self.res[0] * current_side[0], self.res[1] * current_side[1])
         D: pygame.Vector2 = pygame.Vector2(self.res[0] * current_side[2], self.res[1] * current_side[3])
@@ -191,8 +189,7 @@ class Camera:
 
         return pygame.Vector2(x, y)
 
-    def get_point(self, point: pygame.Vector3) -> tuple[float, float, bool]:
-        on_screen: bool = True
+    def get_point(self, point: pygame.Vector3) -> tuple[float, float, int]:
         x, y, z = self.rotate_point(point)
 
         x_dist = x - self.position.x
@@ -202,16 +199,51 @@ class Camera:
         y_mid = (y_dist * self.screen_distance) / (x_dist + small_number)
         z_mid = (z_dist * self.screen_distance) / (x_dist + small_number)
 
+        if x_dist < 0:
+            z_mid *= -1
+            y_mid *= -1
+
         x_pos = (self.res[0] / 2) - y_mid
         y_pos = (self.res[1] / 2) - z_mid
 
-        if x_pos < 0 or x_pos > self.res[0] or y_pos < 0 or y_pos > self.res[1] or x_dist < 0:
-            on_screen = False
+        on_screen: int = 0b000
+
+        if x_pos < 0 or x_pos > self.res[0]:
+            on_screen |= 0b100
+        if y_pos < 0 or y_pos > self.res[1]:
+            on_screen |= 0b010
+        if x_dist < 0:
+            on_screen |= 0b001
 
         return x_pos, y_pos, on_screen
 
+    def rotate(self, x: float, y: float) -> None:
+        self.rotation.x += x * (self.mouse_sensitivity / 100)
+        self.rotation.y += y * (self.mouse_sensitivity / 100)
+
+        self.rotation.x %= 360
+
+
+class Player:
+    position: pygame.Vector3
+    original_height: float
+    height: float
+    jump_height: float
+    crouch_multiplier: float
+
+    camera: Camera
+
+    def __init__(self, starting_position: pygame.Vector3, camera: Camera):
+        self.position = starting_position
+        self.original_height = 1
+        self.height = self.original_height
+        self.jump_height = 1
+        self.crouch_multiplier = 0.5
+
+        self.camera = camera
+
     def move(self, keys, dt):
-        rotation = degrees_to_radians(360 - self.rotation.x)
+        rotation = degrees_to_radians(360 - self.camera.rotation.x)
 
         if keys[pygame.K_w]:
             self.position.x += 10 * dt * math.sin(rotation)
@@ -230,21 +262,23 @@ class Camera:
             self.height = self.original_height * self.crouch_multiplier
         else:
             self.height = self.original_height
-        self.position.z = self.height + self.origin.z
+
+        self.camera.position.z = self.height + self.position.z
 
         mouse_x, mouse_y = pygame.mouse.get_rel()
 
-        self.rotation.x += mouse_x * (self.mouse_sensitivity / 100)
-        self.rotation.y += mouse_y * (self.mouse_sensitivity / 100)
+        self.camera.rotate(mouse_x, mouse_y)
 
-        self.rotation.x %= 360
+        self.camera.position.x = self.position.x
+        self.camera.position.y = self.position.y
 
 
 def degrees_to_radians(degs: float) -> float:
     return degs * (math.pi / 180)
 
 
-def crossing_of_lines(d: pygame.Vector2, c: pygame.Vector2, p: pygame.Vector2, re: pygame.Vector2) -> tuple[float, float, float]:
+def crossing_of_lines(d: pygame.Vector2, c: pygame.Vector2, p: pygame.Vector2, re: pygame.Vector2) -> tuple[
+                        float, float, float]:
     a = (d.x - c.x) * (c.y - p.y) - (d.y - c.y) * (c.x - p.x)
     b = (d.x - c.x) * (re.y - p.y) - (d.y - c.y) * (re.x - p.x)
     c = (re.x - p.x) * (c.y - p.y) - (re.y - p.y) * (c.x - p.x)
@@ -265,7 +299,9 @@ def main() -> None:
     cube2 = Cuboid((3, 1, 0), (4, 2, 1), "blue")
     cube3 = Cuboid((-1, -3, 0), (0, -2, 1), "green")
     cube4 = Cuboid((-3, -1, 0), (-2, 0, 1), "yellow")
-    camera = Camera(pygame.Vector3(0, 0, 0), 120, (1280, 720), screen, 5)
+
+    camera = Camera(120, (1280, 720), screen, 5)
+    player: Player = Player(pygame.Vector3(0, 0, 0), camera)
 
     running = True
     paused = False
@@ -296,7 +332,7 @@ def main() -> None:
         screen.fill("white")
 
         keys = pygame.key.get_pressed()
-        camera.move(keys, dt)
+        player.move(keys, dt)
 
         camera.render()
 
