@@ -173,15 +173,9 @@ class Camera:
         re: pygame.Vector2 = pygame.Vector2(reference[0], reference[1])
         p: pygame.Vector2 = pygame.Vector2(point[0], point[1])
 
-        a, b, c = crossing_of_lines(D, C, p, re)
+        alpha: float | None = crossing_of_lines(D, C, p, re)
 
-        if b == 0:
-            return None
-
-        alpha: float = a / b
-        beta: float = c / b
-
-        if alpha >= 1 or alpha <= 0 or beta >= 1 or beta <= 0:
+        if alpha is None:
             return None
 
         x = p.x + alpha * (p.x - re.x)
@@ -277,13 +271,21 @@ def degrees_to_radians(degs: float) -> float:
     return degs * (math.pi / 180)
 
 
-def crossing_of_lines(d: pygame.Vector2, c: pygame.Vector2, p: pygame.Vector2, re: pygame.Vector2) -> tuple[
-                        float, float, float]:
+def crossing_of_lines(d: pygame.Vector2, c: pygame.Vector2, p: pygame.Vector2, re: pygame.Vector2) -> float | None:
     a = (d.x - c.x) * (c.y - p.y) - (d.y - c.y) * (c.x - p.x)
     b = (d.x - c.x) * (re.y - p.y) - (d.y - c.y) * (re.x - p.x)
     c = (re.x - p.x) * (c.y - p.y) - (re.y - p.y) * (c.x - p.x)
 
-    return a, b, c
+    if b == 0:
+        return None
+
+    alpha: float = a / b
+    beta: float = c / b
+
+    if alpha >= 1 or alpha <= 0 or beta >= 1 or beta <= 0:
+        return None
+
+    return alpha
 
 
 def main() -> None:
