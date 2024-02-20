@@ -21,3 +21,7 @@ def crossing_of_lines(d: pygame.Vector2, c: pygame.Vector2, p: pygame.Vector2, r
         return None
 
     return alpha
+
+
+def clamp(value: float, min_value: float, max_value: float) -> float:
+    return max(min_value, min(max_value, value))

@@ -1,7 +1,11 @@
 import math
 import pygame
 
-from utils import degrees_to_radians, crossing_of_lines
+from utils import (
+    degrees_to_radians,
+    crossing_of_lines,
+    clamp
+)
 
 small_number: float = 0.001
 
@@ -11,31 +15,21 @@ side_lines: list[tuple[int, int, int, int]] = [
 
 
 class Face:
-    vertices: list[pygame.Vector3]
-    color: str
-
     def __init__(self, *vertices: tuple[float, float, float], color: str = "green") -> None:
-        self.vertices = []
+        self.vertices: list[pygame.Vector3] = []
 
-        self.color = color
+        self.color: str = color
 
         for coords in vertices:
             self.vertices.append(pygame.Vector3(coords[0], coords[1], coords[2]))
 
 
 class Cuboid:
-    cor1: pygame.Vector3
-    cor2: pygame.Vector3
-
-    color: str
-
-    faces: list[Face]
-
     def __init__(self, cor1: tuple[float, float, float], cor2: tuple[float, float, float], color: str) -> None:
-        self.cor1 = pygame.Vector3(cor1)
-        self.cor2 = pygame.Vector3(cor2)
-        self.faces = []
-        self.color = color
+        self.cor1: pygame.Vector3 = pygame.Vector3(cor1)
+        self.cor2: pygame.Vector3 = pygame.Vector3(cor2)
+        self.faces: list[Face] = []
+        self.color: str = color
 
         self.create_faces()
 
@@ -53,27 +47,17 @@ class Cuboid:
 
 
 class Camera:
-    position: pygame.Vector3
-    screen_distance: float
-    screen: pygame.Surface
-    res: tuple[float, float]
-
-    render_queue: list[Face]
-
-    rotation: pygame.Vector2
-    mouse_sensitivity: float
-
     def __init__(self, fov: float, res: tuple[float, float],
                  screen: pygame.Surface, mouse_sensitivity: float = 10) -> None:
-        self.res = res
-        self.screen_distance = self.calc_fov(fov)
-        self.screen = screen
-        self.rotation = pygame.Vector2(-90, 0)
-        self.mouse_sensitivity = mouse_sensitivity
+        self.res: tuple[float, float] = res
+        self.screen_distance: float = self.calc_fov(fov)
+        self.screen: pygame.Surface = screen
+        self.rotation: pygame.Vector2 = pygame.Vector2(-90, 0)
+        self.mouse_sensitivity: float = mouse_sensitivity
 
-        self.render_queue = []
+        self.render_queue: list[Face] = []
 
-        self.position = pygame.Vector3(0, 0, 0)
+        self.position: pygame.Vector3 = pygame.Vector3(0, 0, 0)
 
     def calc_fov(self, deg: float) -> float:
         return (self.res[0] / 2) / (math.tan(degrees_to_radians(deg) / 2))
@@ -217,26 +201,20 @@ class Camera:
         self.rotation.x += x * (self.mouse_sensitivity / 100)
         self.rotation.y += y * (self.mouse_sensitivity / 100)
 
+        self.rotation.y = clamp(self.rotation.y, -85, 85)
+
         self.rotation.x %= 360
 
 
 class Player:
-    position: pygame.Vector3
-    original_height: float
-    height: float
-    jump_height: float
-    crouch_multiplier: float
-
-    camera: Camera
-
     def __init__(self, starting_position: pygame.Vector3, camera: Camera):
-        self.position = starting_position
-        self.original_height = 1
-        self.height = self.original_height
-        self.jump_height = 1
-        self.crouch_multiplier = 0.5
+        self.position: pygame.Vector3 = starting_position
+        self.original_height: float = 1
+        self.height: float = self.original_height
+        self.jump_height: float = 1
+        self.crouch_multiplier: float = 0.5
 
-        self.camera = camera
+        self.camera: Camera = camera
 
     def move(self, keys, dt):
         rotation = degrees_to_radians(360 - self.camera.rotation.x)
